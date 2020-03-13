@@ -1,0 +1,31 @@
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: secret-injector
+  labels:
+    app.kubernetes.io/name: secret-injector
+webhooks:
+- name: secret-injector.m213f.org
+  clientConfig:
+    caBundle: $(TLSCERT)
+    service:
+      name: webhook
+      namespace: secret-injector
+      path: /secrets/mutate
+  failurePolicy: Fail
+  objectSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - secret-injector
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - secrets

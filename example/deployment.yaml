@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook
+  namespace: secret-injector
+  labels:
+    app.kubernetes.io/name: secret-injector
+  annotations:
+    prometheus.io/path: "/metrics"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: secret-injector
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: secret-injector
+    spec:
+      containers:
+      - name: secret-injector
+        image: masa213f/secret-injector:0.1.0
+        volumeMounts:
+        - name: certs
+          mountPath: /certs
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+            scheme: HTTP
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+            scheme: HTTP
+      volumes:
+      - name: certs
+        secret:
+          secretName: webhook-certs

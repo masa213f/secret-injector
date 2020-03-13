@@ -1,0 +1,21 @@
+{
+    "CN": "webhook",
+    "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "webhook",
+        "webhook.secret-injector",
+        "webhook.secret-injector.svc"
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "JP",
+            "ST": "Tokyo",
+            "L": "Chuoh-ku"
+        }
+    ]
+}

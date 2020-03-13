@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+- certs
+resources:
+- deployment.yaml
+- service.yaml
+- webhook.yaml
+configurations:
+  - kustomizeconfig.yaml
+vars:
+- name: TLSCERT
+  objref:
+    version: v1
+    kind: Secret
+    name: webhook-certs
+  fieldref:
+    fieldpath: data[ca.crt]
