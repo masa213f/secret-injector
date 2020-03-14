@@ -2,8 +2,11 @@ package hooks
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +19,17 @@ type secretInjector struct {
 	client      client.Client
 	decoder     *admission.Decoder
 	githubToken string
+}
+
+func newSecret() string {
+	runes := make([]byte, 64)
+
+	for i := 0; i < 64; i++ {
+		num, _ := rand.Int(rand.Reader, big.NewInt(255))
+		runes[i] = byte(num.Int64())
+	}
+
+	return base64.RawStdEncoding.EncodeToString(runes)
 }
 
 // +kubebuilder:webhook:path=/secrets/mutate,mutating=true,failurePolicy=fail,groups="",resources=secrets,verbs=create;update,versions=v1,name=secret-injector.m213f.org
@@ -32,20 +46,17 @@ func (s *secretInjector) Handle(ctx context.Context, req admission.Request) admi
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	_, ok := sec.Labels["secret-injector.m213f.org/injection"]
-	if !ok {
+	val, ok := sec.Labels["secret-injector.m213f.org/injection"]
+	if !ok || val != "true" {
 		return admission.Allowed("ok")
 	}
 
 	if sec.Type != corev1.SecretTypeOpaque {
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("type is not Opaqueu"))
 	}
-	if sec.Data == nil {
-		sec.Data = map[string][]byte{}
+	for k, _ := range sec.Data {
+		sec.Data[k] = []byte(newSecret())
 	}
-	sec.Data["hoge"] = []byte("hogehogehoge")
-	sec.Data["piyo"] = []byte("piyopiyopiyo")
-	sec.Data["fuga"] = []byte("fugafugafuga")
 
 	marshaled, err := json.Marshal(sec)
 	if err != nil {
