@@ -23,7 +23,7 @@ mod:
 	go mod tidy
 	go mod vendor
 
-build: mod $(TARGET)
+build: $(TARGET)
 
 $(TARGET): go.mod $(SOURCE)
 	CGO_ENABLED=0 go build -o ./bin/$@ ./cmd/$@

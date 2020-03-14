@@ -4,6 +4,7 @@ bases:
 - certs
 resources:
 - deployment.yaml
+- rbac.yaml
 - service.yaml
 - webhook.yaml
 configurations:

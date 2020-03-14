@@ -4,16 +4,14 @@ import (
 	"flag"
 	"os"
 
-	injector "github.com/masa213f/secret-injector/pkg/secret-injector"
+	secretinjector "github.com/masa213f/secret-injector/pkg/secret-injector"
 	"k8s.io/apimachinery/pkg/runtime"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme = runtime.NewScheme()
 )
 
 func main() {
@@ -26,6 +24,7 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	setupLog := ctrl.Log.WithName("setup")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
@@ -39,12 +38,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup webhooks
-	setupLog.Info("setting up webhook server")
-	hookServer := mgr.GetWebhookServer()
-
-	setupLog.Info("registering webhooks to the webhook server")
-	hookServer.Register("/secrets/mutate", injector.NewSecretInjector(mgr.GetClient(), githubToken))
+	si := secretinjector.New(mgr.GetClient(), ctrl.Log.WithName("secret-injector"))
+	si.SetupWithManager(mgr)
+	if err != nil {
+		setupLog.Error(err, "unable to set up")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

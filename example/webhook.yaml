@@ -15,10 +15,10 @@ webhooks:
   failurePolicy: Fail
   objectSelector:
     matchExpressions:
-      - key: app.kubernetes.io/name
-        operator: NotIn
+      - key: secret-injector.m213f.org/injection
+        operator: In
         values:
-          - secret-injector
+          - "true"
   rules:
   - apiGroups:
     - ""

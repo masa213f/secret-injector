@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: webhook
+  name: secret-injector
   namespace: secret-injector
   labels:
     app.kubernetes.io/name: secret-injector
@@ -19,6 +19,7 @@ spec:
       labels:
         app.kubernetes.io/name: secret-injector
     spec:
+      serviceAccountName: secret-injector
       containers:
       - name: secret-injector
         image: masa213f/secret-injector:0.1.0
