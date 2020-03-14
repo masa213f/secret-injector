@@ -4,7 +4,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/masa213f/secret-injector/hooks"
+	injector "github.com/masa213f/secret-injector/pkg/secret-injector"
 	"k8s.io/apimachinery/pkg/runtime"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,7 +44,7 @@ func main() {
 	hookServer := mgr.GetWebhookServer()
 
 	setupLog.Info("registering webhooks to the webhook server")
-	hookServer.Register("/secrets/mutate", hooks.NewSecretInjector(mgr.GetClient(), githubToken))
+	hookServer.Register("/secrets/mutate", injector.NewSecretInjector(mgr.GetClient(), githubToken))
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

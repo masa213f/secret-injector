@@ -26,7 +26,7 @@ mod:
 build: mod $(TARGET)
 
 $(TARGET): go.mod $(SOURCE)
-	CGO_ENABLED=0 go build -o bin/$@ main.go
+	CGO_ENABLED=0 go build -o ./bin/$@ ./cmd/$@
 
 clean:
 	-rm bin/$(TARGET)
