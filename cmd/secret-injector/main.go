@@ -38,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	si := secretinjector.New(mgr.GetClient(), ctrl.Log.WithName("secret-injector"))
+	si := secretinjector.New(ctrl.Log.WithName("secret-injector"))
 	si.SetupWithManager(mgr)
 	if err != nil {
 		setupLog.Error(err, "unable to set up")

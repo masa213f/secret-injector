@@ -9,9 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -22,6 +20,9 @@ const TargetLabelKey = "secret-injector.m213f.org/injection"
 // TargetLabelValue is the label value of target secrets.
 const TargetLabelValue = "true"
 
+// AnnotationKey is a annotation key.
+const AnnotationKey = "secret-injector.m213f.org/update-timestamp"
+
 // SecretInjector is mutateing webhook and controller.
 type SecretInjector struct {
 	client  client.Client
@@ -30,8 +31,8 @@ type SecretInjector struct {
 }
 
 // New creates a controller for secrets.
-func New(client client.Client, log logr.Logger) *SecretInjector {
-	return &SecretInjector{client: client, log: log}
+func New(log logr.Logger) *SecretInjector {
+	return &SecretInjector{log: log}
 }
 
 // SetupWithManager sets up Reconciler with Manager.
@@ -41,14 +42,19 @@ func (si *SecretInjector) SetupWithManager(mgr manager.Manager) error {
 	hookServer.Register("/secrets/mutate", &webhook.Admission{Handler: si})
 
 	// Setup controller
-	pred := predicate.Funcs{
-		CreateFunc:  func(event.CreateEvent) bool { return false },
-		DeleteFunc:  func(event.DeleteEvent) bool { return false },
-		UpdateFunc:  func(event.UpdateEvent) bool { return true },
-		GenericFunc: func(event.GenericEvent) bool { return false },
+	if err := corev1.AddToScheme(mgr.GetScheme()); err != nil {
+		return err
+	}
+	if _, err := mgr.GetCache().GetInformer(&corev1.Secret{}); err != nil {
+		return err
 	}
 	return builder.ControllerManagedBy(mgr).
-		WithEventFilter(pred).
+		// WithEventFilter(predicate.Funcs{
+		// 	CreateFunc:  func(event.CreateEvent) bool { return false },
+		// 	DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		// 	UpdateFunc:  func(event.UpdateEvent) bool { return true },
+		// 	GenericFunc: func(event.GenericEvent) bool { return false },
+		// }).
 		For(&corev1.Secret{}).
 		Complete(si)
 }

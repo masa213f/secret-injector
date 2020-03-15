@@ -9,7 +9,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: secret-injector
+  name: secret-injector:controller
   labels:
     app.kubernetes.io/name: secret-injector
 rules:
@@ -18,22 +18,23 @@ rules:
   resources:
   - secrets
   verbs:
-  - get
-  - watch
-  - list
-  - update
-  - patch
+  - "*"
+  # - get
+  # - watch
+  # - list
+  # - update
+  # - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: secret-injector
+  name: secret-injector:controller
   labels:
     app.kubernetes.io/name: secret-injector
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: secret-injector
+  name: secret-injector:controller
 subjects:
 - kind: ServiceAccount
   name: secret-injector
