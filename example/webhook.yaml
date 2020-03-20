@@ -15,7 +15,7 @@ webhooks:
   failurePolicy: Fail
   objectSelector:
     matchExpressions:
-      - key: secret-injector.m213f.org/injection
+      - key: injector.m213f.org/injection
         operator: In
         values:
           - "true"
