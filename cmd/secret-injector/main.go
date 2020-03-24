@@ -45,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = injector.New(pollingInterval, log).SetupWithManager(mgr)
+	err = injector.New(githubToken, pollingInterval, log).SetupWithManager(mgr)
 	if err != nil {
 		setupLog.Error(err, "unable to set up")
 		os.Exit(1)

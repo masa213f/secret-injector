@@ -2,16 +2,17 @@ package injector
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
-	"math/big"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-github/v30/github"
+	"golang.org/x/oauth2"
+	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -25,13 +26,27 @@ import (
 type Injector struct {
 	client          client.Client
 	decoder         *admission.Decoder
+	githubClient    *github.Client
 	pollingInterval time.Duration
 	log             logr.Logger
 }
 
 // New creates the new Injector.
-func New(pollingInterval time.Duration, log logr.Logger) *Injector {
+func New(githubToken string, pollingInterval time.Duration, log logr.Logger) *Injector {
+	var g *github.Client
+	if githubToken == "" {
+		g = github.NewClient(nil)
+	} else {
+		ctx := context.Background()
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: githubToken},
+		)
+		tc := oauth2.NewClient(ctx, ts)
+		g = github.NewClient(tc)
+	}
+
 	return &Injector{
+		githubClient:    g,
 		pollingInterval: pollingInterval,
 		log:             log,
 	}
@@ -79,7 +94,7 @@ func (in *Injector) isTarget(sec *corev1.Secret) bool {
 }
 
 func (in *Injector) calcWaitTime(sec *corev1.Secret, now time.Time) time.Duration {
-	val, exist := sec.Annotations[AnnotationKey]
+	val, exist := sec.Annotations[LastUpdateKey]
 	if !exist {
 		return 0
 	}
@@ -94,24 +109,66 @@ func (in *Injector) calcWaitTime(sec *corev1.Secret, now time.Time) time.Duratio
 	return wait
 }
 
-// GetData is xxx
-func (in *Injector) getData() string {
-	const len = 64
-	runes := make([]byte, len)
-
-	for i := 0; i < len; i++ {
-		num, _ := rand.Int(rand.Reader, big.NewInt(255))
-		runes[i] = byte(num.Int64())
+func (in *Injector) fetch(owner, repo, path, branch string) (map[string]string, error) {
+	fileContent, dirContent, _, err := in.githubClient.Repositories.GetContents(
+		context.Background(), owner, repo, path, &github.RepositoryContentGetOptions{Ref: branch})
+	if _, ok := err.(*github.RateLimitError); ok {
+		return nil, errors.New("RateLimitError")
+	} else if err != nil {
+		return nil, err
 	}
 
-	return base64.RawStdEncoding.EncodeToString(runes)
+	if fileContent != nil {
+		raw, err := fileContent.GetContent()
+		if err != nil {
+			return nil, err
+		}
+
+		data := map[string]string{}
+		err = yaml.Unmarshal([]byte(raw), &data)
+		if err != nil {
+			return nil, err
+		}
+
+		ret := map[string]string{}
+		for k, v := range data {
+			ret[k] = v
+		}
+		return ret, nil
+	}
+
+	ret := map[string]string{}
+	for _, fileMeta := range dirContent {
+		if fileMeta.Type != nil && *fileMeta.Type != "file" {
+			continue
+		}
+
+		file, _, _, err := in.githubClient.Repositories.GetContents(
+			context.Background(), owner, repo, fileMeta.GetPath(), &github.RepositoryContentGetOptions{Ref: branch})
+		if _, ok := err.(*github.RateLimitError); ok {
+			return nil, errors.New("RateLimitError")
+		} else if err != nil {
+			return nil, err
+		}
+
+		data, err := file.GetContent()
+		if err != nil {
+			return nil, err
+		}
+		ret[file.GetName()] = data
+	}
+	return ret, nil
 }
 
 func (in *Injector) update(sec *corev1.Secret, now time.Time) error {
-	sec.Annotations[AnnotationKey] = now.UTC().Format(time.RFC3339)
+	sec.Annotations[LastUpdateKey] = now.UTC().Format(time.RFC3339)
 
-	for k := range sec.Data {
-		sec.Data[k] = []byte(in.getData())
+	data, err := in.fetch("masa213f", "secret-injector", "testdata/files", "")
+	if err != nil {
+		return err
+	}
+	for k, v := range data {
+		sec.Data[k] = []byte(v)
 	}
 	return nil
 }
@@ -154,7 +211,7 @@ func (in *Injector) Handle(ctx context.Context, req admission.Request) admission
 func (in *Injector) Reconcile(req reconcile.Request) (reconcile.Result, error) {
 	sec := &corev1.Secret{}
 	err := in.client.Get(context.TODO(), req.NamespacedName, sec)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		in.log.Error(nil, "Could not find Secret")
 		return reconcile.Result{}, nil
 	} else if err != nil {

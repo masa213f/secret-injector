@@ -1,13 +1,18 @@
 package injector
 
-// KeyPrefix is the prefix of label and annotation keys.
-const KeyPrefix = "injector.m213f.org/"
-
-// TargetLabelKey is the label key of target secrets.
-const TargetLabelKey = KeyPrefix + "injection"
+// Label keys
+const (
+	TargetLabelKey = "injector.m213f.org/injection"
+)
 
 // TargetLabelValue is the label value of target secrets.
 const TargetLabelValue = "true"
 
-// AnnotationKey is a annotation key.
-const AnnotationKey = KeyPrefix + "update-timestamp"
+// Annotation keys
+const (
+	LastUpdateKey = "injector.m213f.org/lastupdate"
+	AutoPruneKey  = "injector.m213f.org/autoprune"
+	RepositoryKey = "injector.m213f.org/repository"
+	BranchKey     = "injector.m213f.org/branch"
+	SourceKey     = "injector.m213f.org/source"
+)

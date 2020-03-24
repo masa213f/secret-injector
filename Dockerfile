@@ -1,4 +1,4 @@
-FROM scratch
+FROM quay.io/cybozu/ubuntu:18.04
 
 COPY bin/secret-injector /secret-injector
 
