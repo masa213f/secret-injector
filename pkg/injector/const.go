@@ -5,17 +5,15 @@ const (
 	WebhookTargetKey = "injector.m213f.org/webhook"
 )
 
-// WebhookTargetValue is the label value of target secrets.
-const WebhookTargetValue = "true"
-
 // Annotation keys
 const (
-	LastUpdateKey = "injector.m213f.org/lastupdate"
-	AutoPruneKey  = "injector.m213f.org/autoprune"
-	RepositoryKey = "injector.m213f.org/repository"
-	SourceKey     = "injector.m213f.org/source"
-	BranchKey     = "injector.m213f.org/branch"
+	// option
+	RepoNameKey   = "injector.m213f.org/repository"
+	BranchNameKey = "injector.m213f.org/branch"
+	SourcePathKey = "injector.m213f.org/source"
+	PruneFlagKey  = "injector.m213f.org/prune"
 
-	HashKey       = "injector.m213f.org/hash"
-	HashKeyPrefix = "injector.m213f.org/hash_"
+	// status
+	SourceHashKey       = "injector.m213f.org/hash"
+	SourceHashKeyPrefix = "injector.m213f.org/hash_"
 )

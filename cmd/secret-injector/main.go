@@ -3,41 +3,37 @@ package main
 import (
 	"flag"
 	"os"
-	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/masa213f/secret-injector/pkg/injector"
-	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 var (
-	scheme          = runtime.NewScheme()
-	log             logr.Logger
-	metricsAddr     string
-	certDir         string
-	pollingInterval time.Duration
-	githubToken     string
+	metricsAddr string
+	certDir     string
+	githubToken string
 )
 
 func init() {
-	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
-	log = ctrl.Log.WithName("secret-injector")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "listen address for metrics")
 	flag.StringVar(&certDir, "cert-dir", "/certs", "certificate directory")
-	flag.DurationVar(&pollingInterval, "polling-interval", 30*time.Second, "polling interval to check github")
 	flag.StringVar(&githubToken, "github-token", "", "github token")
 	flag.Parse()
 }
 
 func main() {
+	logf.SetLogger(zap.New(zap.UseDevMode(false)))
+	log := logf.Log.WithName("secret-injector")
+
 	setupLog := log.WithName("setup")
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
+	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
 		MetricsBindAddress: metricsAddr,
 		Port:               8443,
-		LeaderElection:     false,
 		CertDir:            certDir,
 	})
 	if err != nil {
@@ -45,14 +41,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = injector.New(githubToken, pollingInterval, log).SetupWithManager(mgr)
-	if err != nil {
-		setupLog.Error(err, "unable to set up")
-		os.Exit(1)
-	}
+	hookServer := mgr.GetWebhookServer()
+	hookServer.Register("/secrets/mutate", &admission.Webhook{Handler: injector.New(githubToken, log)})
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
