@@ -2,7 +2,6 @@ package injector
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -31,22 +30,37 @@ type Injector struct {
 	log             logr.Logger
 }
 
+type sourceType int
+
+const (
+	typeFile = iota
+	typeDir
+)
+
+type source struct {
+	Type sourceType
+	Meta []metadata
+	Data map[string]string
+}
+
+type metadata struct {
+	Name string
+	Hash string
+}
+
 // New creates the new Injector.
 func New(githubToken string, pollingInterval time.Duration, log logr.Logger) *Injector {
-	var g *github.Client
-	if githubToken == "" {
-		g = github.NewClient(nil)
-	} else {
+	var c *http.Client
+	if githubToken != "" {
 		ctx := context.Background()
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: githubToken},
 		)
-		tc := oauth2.NewClient(ctx, ts)
-		g = github.NewClient(tc)
+		c = oauth2.NewClient(ctx, ts)
 	}
 
 	return &Injector{
-		githubClient:    g,
+		githubClient:    github.NewClient(c),
 		pollingInterval: pollingInterval,
 		log:             log,
 	}
@@ -76,21 +90,10 @@ func (in *Injector) SetupWithManager(mgr manager.Manager) error {
 		Complete(in)
 }
 
-// InjectClient injects a client.
-func (in *Injector) InjectClient(client client.Client) error {
-	in.client = client
-	return nil
-}
-
 // InjectDecoder injects a decoder.
 func (in *Injector) InjectDecoder(d *admission.Decoder) error {
 	in.decoder = d
 	return nil
-}
-
-func (in *Injector) isTarget(sec *corev1.Secret) bool {
-	val, exist := sec.Labels[TargetLabelKey]
-	return exist && val == TargetLabelValue
 }
 
 func (in *Injector) calcWaitTime(sec *corev1.Secret, now time.Time) time.Duration {
@@ -109,7 +112,7 @@ func (in *Injector) calcWaitTime(sec *corev1.Secret, now time.Time) time.Duratio
 	return wait
 }
 
-func (in *Injector) fetch(owner, repo, path, branch string) (map[string]string, error) {
+func (in *Injector) fetch(owner, repo, path, branch string) (*source, error) {
 	fileContent, dirContent, _, err := in.githubClient.Repositories.GetContents(
 		context.Background(), owner, repo, path, &github.RepositoryContentGetOptions{Ref: branch})
 	if _, ok := err.(*github.RateLimitError); ok {
@@ -123,88 +126,54 @@ func (in *Injector) fetch(owner, repo, path, branch string) (map[string]string, 
 		if err != nil {
 			return nil, err
 		}
-
 		data := map[string]string{}
 		err = yaml.Unmarshal([]byte(raw), &data)
 		if err != nil {
 			return nil, err
 		}
 
-		ret := map[string]string{}
-		for k, v := range data {
-			ret[k] = v
+		ret := source{
+			Type: typeFile,
+			Meta: []metadata{
+				{Name: fileContent.GetName(), Hash: fileContent.GetSHA()},
+			},
+			Data: data,
 		}
-		return ret, nil
+		return &ret, nil
 	}
 
-	ret := map[string]string{}
+	meta := []metadata{}
+	data := map[string]string{}
 	for _, fileMeta := range dirContent {
 		if fileMeta.Type != nil && *fileMeta.Type != "file" {
 			continue
 		}
 
-		file, _, _, err := in.githubClient.Repositories.GetContents(
+		fileData, _, _, err := in.githubClient.Repositories.GetContents(
 			context.Background(), owner, repo, fileMeta.GetPath(), &github.RepositoryContentGetOptions{Ref: branch})
 		if _, ok := err.(*github.RateLimitError); ok {
 			return nil, errors.New("RateLimitError")
 		} else if err != nil {
 			return nil, err
 		}
-
-		data, err := file.GetContent()
+		raw, err := fileData.GetContent()
 		if err != nil {
 			return nil, err
 		}
-		ret[file.GetName()] = data
+		meta = append(meta, metadata{Name: fileMeta.GetName(), Hash: fileMeta.GetSHA()})
+		data[fileMeta.GetName()] = raw
 	}
-	return ret, nil
+
+	ret := source{
+		Type: typeDir,
+		Meta: meta,
+		Data: data,
+	}
+	return &ret, nil
 }
 
-func (in *Injector) update(sec *corev1.Secret, now time.Time) error {
-	sec.Annotations[LastUpdateKey] = now.UTC().Format(time.RFC3339)
-
-	data, err := in.fetch("masa213f", "secret-injector", "testdata/files", "")
-	if err != nil {
-		return err
-	}
-	for k, v := range data {
-		sec.Data[k] = []byte(v)
-	}
-	return nil
-}
-
-// Handle handles addmission requests.
-func (in *Injector) Handle(ctx context.Context, req admission.Request) admission.Response {
-	sec := &corev1.Secret{}
-	err := in.decoder.Decode(req, sec)
-	if err != nil {
-		return admission.Errored(http.StatusBadRequest, err)
-	}
-
-	if !in.isTarget(sec) {
-		return admission.Allowed("ok")
-	}
-	now := time.Now()
-	if in.calcWaitTime(sec, now) > 0 {
-		return admission.Allowed("ok")
-	}
-
-	log := in.log.WithName("webhook")
-	log.Info("Mutating Secrets", "namespace", req.Namespace, "name", req.Name)
-
-	err = in.update(sec, now)
-	if err != nil {
-		log.Error(err, "Could not update Secret")
-		return admission.Errored(http.StatusInternalServerError, err)
-	}
-
-	marshaled, err := json.Marshal(sec)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError, err)
-	}
-
-	log.Info("Success Mutating Secrets", "namespace", req.Namespace, "name", req.Name)
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaled)
+func (in *Injector) isTarget(sec *corev1.Secret) bool {
+	return false
 }
 
 // Reconcile rewrite secrets data.
@@ -230,17 +199,17 @@ func (in *Injector) Reconcile(req reconcile.Request) (reconcile.Result, error) {
 	}
 	log.Info("Reconciling Secrets", "namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
 
-	err = in.update(sec, now)
-	if err != nil {
-		log.Error(err, "Could not update Secret")
-		return reconcile.Result{}, err
-	}
+	// err = in.update(sec, now)
+	// if err != nil {
+	// 	log.Error(err, "Could not update Secret")
+	// 	return reconcile.Result{}, err
+	// }
 
-	err = in.client.Update(context.TODO(), sec)
-	if err != nil {
-		log.Error(err, "Could not write Secret")
-		return reconcile.Result{}, err
-	}
+	// err = in.client.Update(context.TODO(), sec)
+	// if err != nil {
+	// 	log.Error(err, "Could not write Secret")
+	// 	return reconcile.Result{}, err
+	// }
 
 	log.Info("Success Reconciling Secrets", "namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
 	return reconcile.Result{}, nil
