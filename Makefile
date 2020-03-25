@@ -5,14 +5,6 @@ SOURCE = $(shell find . -type f -name "*.go" -not -name "*_test.go")
 IMAGE_NAME = masa213f/secret-injector
 IMAGE_TAG = $(VERSION)
 
-
-# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
-ifeq (,$(shell go env GOBIN))
-GOBIN=$(shell go env GOPATH)/bin
-else
-GOBIN=$(shell go env GOBIN)
-endif
-
 all: build
 
 setup:
